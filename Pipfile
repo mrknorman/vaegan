@@ -7,6 +7,9 @@ verify_ssl = true
 
 [packages]
 tensorflow2 = "*"
+matplotlib = "*"
+pandas = "*"
+sklearn = "*"
 
 [requires]
 python_version = "3.8"
