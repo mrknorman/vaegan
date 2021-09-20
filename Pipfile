@@ -10,6 +10,8 @@ tensorflow2 = "*"
 matplotlib = "*"
 pandas = "*"
 sklearn = "*"
+tensorflow-probability = "*"
+imageio = "*"
 
 [requires]
 python_version = "3.8"

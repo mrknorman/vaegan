@@ -1,0 +1,24 @@
+
+pseudo vae-gan
+Epoch: 1, Test set ELBO: -185.92160034179688, time elapse for current epoch: 84.17703199386597
+Epoch: 2, Test set ELBO: -175.29615783691406, time elapse for current epoch: 87.27494502067566
+Epoch: 3, Test set ELBO: -170.2336883544922, time elapse for current epoch: 88.26011919975281
+Epoch: 4, Test set ELBO: -165.84075927734375, time elapse for current epoch: 86.64603519439697
+Epoch: 5, Test set ELBO: -163.15072631835938, time elapse for current epoch: 88.12994503974915
+Epoch: 6, Test set ELBO: -161.73910522460938, time elapse for current epoch: 86.14364409446716
+Epoch: 7, Test set ELBO: -160.29954528808594, time elapse for current epoch: 86.10665893554688
+Epoch: 8, Test set ELBO: -159.31845092773438, time elapse for current epoch: 84.2403461933136
+Epoch: 9, Test set ELBO: -158.72482299804688, time elapse for current epoch: 88.82723212242126
+Epoch: 10, Test set ELBO: -158.11077880859375, time elapse for current epoch: 87.6063539981842
+
+vae
+Epoch: 1, Test set ELBO: -183.7152099609375, time elapse for current epoch: 35.24373912811279
+Epoch: 2, Test set ELBO: -172.74154663085938, time elapse for current epoch: 34.02648305892944
+Epoch: 3, Test set ELBO: -168.03811645507812, time elapse for current epoch: 33.90023899078369
+Epoch: 4, Test set ELBO: -165.1415557861328, time elapse for current epoch: 33.624093770980835
+Epoch: 5, Test set ELBO: -163.2003173828125, time elapse for current epoch: 33.34050416946411
+Epoch: 6, Test set ELBO: -161.90603637695312, time elapse for current epoch: 33.51214098930359
+Epoch: 7, Test set ELBO: -160.8813934326172, time elapse for current epoch: 33.62694692611694
+Epoch: 8, Test set ELBO: -159.87860107421875, time elapse for current epoch: 33.32210898399353
+Epoch: 9, Test set ELBO: -159.17227172851562, time elapse for current epoch: 33.46122694015503
+Epoch: 10, Test set ELBO: -159.6957550048828, time elapse for current epoch: 33.39371705055237
