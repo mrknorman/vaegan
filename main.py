@@ -1,11 +1,25 @@
 import glob
-import imageio
 import matplotlib.pyplot as plt
 import numpy as np
 import PIL
 import tensorflow as tf
-import tensorflow_probability as tfp
 import time
+
+def setupCUDA(verbose, device_num):
+
+  os.environ["CUDA_VISIBLE_DEVICES"] = str(device_num)
+
+  physical_devices = tf.config.list_physical_devices('GPU')
+  try:
+          tf.config.experimental.set_memory_growth(physical_devices[0], True)
+  except:
+
+       # Invalid device or cannot modify virtual devices once initialized.
+        pass
+  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+
+  if verbose:
+          tf.config.list_physical_devices("GPU")
 
 class CVAE(tf.keras.Model):
   """Convolutional variational autoencoder."""
@@ -134,8 +148,8 @@ def vae(model, x):
   enc_l = model.encode_l(x)
   dis_l = model.discrim_l(x_logit)
 
-  print(f"Encoder: {enc_l[0][0][0]}")
-  print(f"Discriminator: {dis_l[0][0][0]}")
+  #print(f"Encoder: {enc_l[0][0][0]}")
+  #print(f"Discriminator: {dis_l[0][0][0]}")
 
   cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=dis_l, labels=enc_l)
   logpx_z   = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
@@ -155,7 +169,7 @@ def compute_loss(model, x):
   gen_loss = model.generator_loss(fake_output)
   dis_loss = model.discriminator_loss(real_output, fake_output)
 
-  return -tf.reduce_mean(logpx_z + logpz - logqz_x) + (gen_loss + dis_loss)
+  return -tf.reduce_mean(logpx_z + logpz - logqz_x) + (dis_loss - gen_loss)
 
 @tf.function
 def train_step(model, x, optimizer, loss_function):
@@ -181,64 +195,68 @@ def generate_and_save_images(model, epoch, test_sample, name):
     plt.axis('off')
 
   # tight_layout minimizes the overlap between 2 sub-plots
-  plt.savefig('{}_image_at_epoch_{:04d}.png'.format(name, epoch))
+  plt.savefig('./tests/{}/image_at_epoch_{:04d}.png'.format(name, epoch))
 
-train_size = 60000
-batch_size = 32
-test_size  = 10000
+def main():
+  
+  train_size = 60000
+  batch_size = 32
+  test_size  = 10000
 
-(train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
+  (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
 
-train_images = preprocess_images(train_images)
-test_images = preprocess_images(test_images)
+  train_images = preprocess_images(train_images)
+  test_images = preprocess_images(test_images)
 
-train_dataset = (tf.data.Dataset.from_tensor_slices(train_images)
-                 .shuffle(train_size).batch(batch_size))
-test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
-                .shuffle(test_size).batch(batch_size))
+  train_dataset = (tf.data.Dataset.from_tensor_slices(train_images)
+           .shuffle(train_size).batch(batch_size))
+  test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
+          .shuffle(test_size).batch(batch_size))
 
-epochs = 10
-# set the dimensionality of the latent space to a plane for visualization later
-latent_dim = 2
-num_examples_to_generate = 16
+  epochs = 10
+  # set the dimensionality of the latent space to a plane for visualization later
+  latent_dim = 2
+  num_examples_to_generate = 16
 
-optimizer = tf.keras.optimizers.Adam(1e-4)
+  optimizer = tf.keras.optimizers.Adam(1e-4)
 
-# keeping the random vector constant for generation (prediction) so
-# it will be easier to see the improvement.
-random_vector_for_generation = tf.random.normal(
+  # keeping the random vector constant for generation (prediction) so
+  # it will be easier to see the improvement.
+  random_vector_for_generation = tf.random.normal(
     shape=[num_examples_to_generate, latent_dim])
-model = CVAE(latent_dim)
-#model.build(input_shape = (:,))
-# Pick a sample of the test set for generating output images
-assert batch_size >= num_examples_to_generate
-for test_batch in test_dataset.take(1):
-  test_sample = test_batch[0:num_examples_to_generate, :, :, :]
+  model = CVAE(latent_dim)
+  #model.build(input_shape = (:,))
+  # Pick a sample of the test set for generating output images
+  assert batch_size >= num_examples_to_generate
+  for test_batch in test_dataset.take(1):
+    test_sample = test_batch[0:num_examples_to_generate, :, :, :]
 
-is_vae = 0
+  is_vae = 0
 
-if is_vae:
-  loss_function = compute_loss_vae
-  plot_name     = "vae"
-else:
-  loss_function = compute_loss
-  plot_name     = "vaegan"
+  if is_vae:
+    loss_function = compute_loss_vae
+    plot_name     = "vae"
+  else:
+    loss_function = compute_loss
+    plot_name     = "vaegan"
 
-generate_and_save_images(model, 0, test_sample, plot_name)
+  generate_and_save_images(model, 0, test_sample, plot_name)
 
-for epoch in range(1, epochs + 1):
-  start_time = time.time()
-  for train_x in train_dataset:
-    train_step(model, train_x, optimizer, loss_function)
-  end_time = time.time()
+  for epoch in range(1, epochs + 1):
+    start_time = time.time()
+    for train_x in train_dataset:
+        train_step(model, train_x, optimizer, loss_function)
+    end_time = time.time()
 
-  loss = tf.keras.metrics.Mean()
-  for test_x in test_dataset:
-    loss(loss_function(model, test_x))
-  elbo = -loss.result()
-  print('Epoch: {}, Test set ELBO: {}, time elapse for current epoch: {}'
-        .format(epoch, elbo, end_time - start_time))
-  generate_and_save_images(model, epoch, test_sample, plot_name)
+    loss = tf.keras.metrics.Mean()
+    for test_x in test_dataset:
+      loss(loss_function(model, test_x))
+    elbo = -loss.result()
+    print('Epoch: {}, Test set ELBO: {}, time elapse for current epoch: {}'
+      .format(epoch, elbo, end_time - start_time))
+    generate_and_save_images(model, epoch, test_sample, plot_name)
 
 
 
+if __name__ == "__main__":
+    main()
