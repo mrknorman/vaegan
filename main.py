@@ -4,6 +4,7 @@ import numpy as np
 import PIL
 import tensorflow as tf
 import time
+import sys, os
 
 def setupCUDA(verbose, device_num):
 
@@ -66,7 +67,24 @@ class CVAE(tf.keras.Model):
           tf.keras.layers.Dense(1)
         ]
       )
-
+    
+    self.generator = tf.keras.Sequential(
+      [
+        tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
+        tf.keras.layers.Dense(units=7*7*32, activation=tf.nn.relu),
+        tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
+        tf.keras.layers.Conv2DTranspose(
+          filters=64, kernel_size=3, strides=2, padding='same',
+          activation='relu'),
+        tf.keras.layers.Conv2DTranspose(
+          filters=32, kernel_size=3, strides=2, padding='same',
+          activation='relu'),
+        # No activation
+        tf.keras.layers.Conv2DTranspose(
+          filters=1, kernel_size=3, strides=1, padding='same'),
+      ]
+    )
+  
     self.dis_layer = tf.keras.models.Model(
       inputs=self.discriminator.inputs,
       outputs=self.discriminator.layers[0].output,
@@ -105,6 +123,10 @@ class CVAE(tf.keras.Model):
       probs = tf.sigmoid(logits)
       return probs
     return logits
+  
+  def generate(self, z):
+    logits = self.generator(z)
+    return logits    
 
   def discriminate(self, x):
     logits = self.discriminator(x)
@@ -159,7 +181,21 @@ def vae(model, x):
 
   return x_logit, logpx_z, logpz, logqz_x
 
-def compute_loss(model, x):
+def compute_loss_gan(model, x):
+  
+  BATCH_SIZE, latent_dim = 32, 100
+  noise = tf.random.normal([BATCH_SIZE, latent_dim])
+  generated_x = model.generate(noise)
+  
+  real_output = model.discriminate(x)
+  fake_output = model.discriminate(generated_x)
+  
+  gen_loss = model.generator_loss(fake_output)
+  dis_loss = model.discriminator_loss(real_output, fake_output)
+  
+  return gen_loss, dis_loss
+
+def compute_loss_vaegan(model, x):
 
   generated_x, logpx_z, logpz, logqz_x = vae(model, x);
 
@@ -183,11 +219,25 @@ def train_step(model, x, optimizer, loss_function):
   gradients = tape.gradient(loss, model.trainable_variables)
   optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
-def generate_and_save_images(model, epoch, test_sample, name):
+@tf.function
+def train_step_gan(model, x, generator_optimizer, discriminator_optimizer, BATCH_SIZE, latent_dim):
+
+    with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+      gen_loss, disc_loss = compute_loss_gan(model, x)
+
+    gradients_of_generator = gen_tape.gradient(gen_loss, model.generator.trainable_variables)
+    gradients_of_discriminator = disc_tape.gradient(disc_loss, model.discriminator.trainable_variables)
+
+    generator_optimizer.apply_gradients(zip(gradients_of_generator, model.generator.trainable_variables))
+    discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, model.discriminator.trainable_variables))
+  
+def generate_and_save_images_vae(model, epoch, test_sample, name):
   mean, logvar = model.encode(test_sample)
   z = model.reparameterize(mean, logvar)
   predictions = model.sample(z)
   fig = plt.figure(figsize=(4, 4))
+  
+  print(predictions.shape[0])
 
   for i in range(predictions.shape[0]):
     plt.subplot(4, 4, i + 1)
@@ -196,11 +246,33 @@ def generate_and_save_images(model, epoch, test_sample, name):
 
   # tight_layout minimizes the overlap between 2 sub-plots
   plt.savefig('./tests/{}/image_at_epoch_{:04d}.png'.format(name, epoch))
+  
+def generate_and_save_images_gan(model, epoch, test_sample, name):
+  
+  BATCH_SIZE, latent_dim = 32, 100
+  noise = tf.random.normal([BATCH_SIZE, latent_dim])
+  predictions = model.generate(noise)
+  
+  print(predictions.shape[0])
+  
+  fig = plt.figure(figsize=(4, 4))
 
-def main():
+  for i in range(16): #predictions.shape[0]):
+    plt.subplot(4, 4, i + 1)
+    plt.imshow(predictions[i, :, :, 0], cmap='gray')
+    plt.axis('off')
+
+  # tight_layout minimizes the overlap between 2 sub-plots
+  plt.savefig('./tests/{}/image_at_epoch_{:04d}.png'.format(name, epoch))
+
+def main(device_num, mode):
+  
+  mode = int(mode)
+  
+  setupCUDA(0, device_num)
   
   train_size = 60000
-  batch_size = 32
+  BATCH_SIZE = 32
   test_size  = 10000
 
   (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
@@ -209,16 +281,17 @@ def main():
   test_images = preprocess_images(test_images)
 
   train_dataset = (tf.data.Dataset.from_tensor_slices(train_images)
-           .shuffle(train_size).batch(batch_size))
+           .shuffle(train_size).batch(BATCH_SIZE))
   test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
-          .shuffle(test_size).batch(batch_size))
+          .shuffle(test_size).batch(BATCH_SIZE))
 
   epochs = 10
   # set the dimensionality of the latent space to a plane for visualization later
-  latent_dim = 2
+  latent_dim = 100
   num_examples_to_generate = 16
 
   optimizer = tf.keras.optimizers.Adam(1e-4)
+  discriminator_optimizer = tf.keras.optimizers.Adam(1e-4)
 
   # keeping the random vector constant for generation (prediction) so
   # it will be easier to see the improvement.
@@ -227,25 +300,30 @@ def main():
   model = CVAE(latent_dim)
   #model.build(input_shape = (:,))
   # Pick a sample of the test set for generating output images
-  assert batch_size >= num_examples_to_generate
+  assert BATCH_SIZE >= num_examples_to_generate
   for test_batch in test_dataset.take(1):
     test_sample = test_batch[0:num_examples_to_generate, :, :, :]
 
-  is_vae = 0
-
-  if is_vae:
+  if (mode == 0):
     loss_function = compute_loss_vae
     plot_name     = "vae"
-  else:
-    loss_function = compute_loss
+  elif (mode == 1):
+    loss_function = compute_loss_gan
+    plot_name     = "gan"
+  elif (mode == 2):
+    loss_function = compute_loss_vaegan
     plot_name     = "vaegan"
 
-  generate_and_save_images(model, 0, test_sample, plot_name)
+  #generate_and_save_images_vae(model, 0, test_sample, plot_name)
 
   for epoch in range(1, epochs + 1):
     start_time = time.time()
     for train_x in train_dataset:
+      if (mode == 0):
         train_step(model, train_x, optimizer, loss_function)
+      elif (mode == 1):
+        train_step_gan(model, train_x, optimizer, discriminator_optimizer, BATCH_SIZE, latent_dim)
+        
     end_time = time.time()
 
     loss = tf.keras.metrics.Mean()
@@ -254,9 +332,11 @@ def main():
     elbo = -loss.result()
     print('Epoch: {}, Test set ELBO: {}, time elapse for current epoch: {}'
       .format(epoch, elbo, end_time - start_time))
-    generate_and_save_images(model, epoch, test_sample, plot_name)
-
-
+    
+    if (mode == 0):
+      generate_and_save_images_vae(model, epoch, test_sample, plot_name)
+    elif (mode == 1):
+      generate_and_save_images_gan(model, epoch, test_sample, plot_name)
 
 if __name__ == "__main__":
-    main()
+    main(*sys.argv[1:])
