@@ -59,33 +59,56 @@ class CVAE(tf.keras.Model):
                 filters=1, kernel_size=3, strides=1, padding='same'),
         ]
     )
-
+    
+    """
     self.discriminator = tf.keras.Sequential(
         [
           tf.keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
                                      input_shape=[28, 28, 1], activation = tf.keras.layers.ReLU(), name = "test_layer"),
-          #tf.keras.layers.Dropout(0.3),
+          tf.keras.layers.Dropout(0.3),
           tf.keras.layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same', activation = tf.keras.layers.ReLU()),
-          #tf.keras.layers.Dropout(0.3),
+          tf.keras.layers.Dropout(0.3),
           tf.keras.layers.Flatten(),
           tf.keras.layers.Dense(1)
         ]
       )
+    """
+    
+    self.discriminator = tf.keras.Sequential([
+      tf.keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
+                                       input_shape=[28, 28, 1]),
+      tf.keras.layers.LeakyReLU(),
+      tf.keras.layers.Dropout(0.3),
+
+      tf.keras.layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same'),
+      tf.keras.layers.LeakyReLU(),
+      tf.keras.layers.Dropout(0.3),
+
+      tf.keras.layers.Flatten(),
+      tf.keras.layers.Dense(1)]
+
+      )
     
     self.generator = tf.keras.Sequential(
       [
+        
+        
         tf.keras.layers.InputLayer(input_shape=(NUM_LATENT_DIM,)),
-        tf.keras.layers.Dense(units=7*7*32, activation=tf.nn.relu),
-        tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
+        tf.keras.layers.Dense(units=7*7*256, use_bias = False),
+        #tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.LeakyReLU(),
+
+        tf.keras.layers.Reshape(target_shape=(7, 7, 256)),
         tf.keras.layers.Conv2DTranspose(
-          filters=64, kernel_size=3, strides=2, padding='same',
-          activation='relu'),
+          filters=128, kernel_size=5, strides=1, padding='same', use_bias = False),
+        #tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.LeakyReLU(),
         tf.keras.layers.Conv2DTranspose(
-          filters=32, kernel_size=3, strides=2, padding='same',
-          activation='relu'),
-        # No activation
+          filters=64, kernel_size=5, strides=2, padding='same', use_bias = False),
+        #tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.LeakyReLU(),
         tf.keras.layers.Conv2DTranspose(
-          filters=1, kernel_size=3, strides=1, padding='same'),
+          filters=1, kernel_size=5, strides=2, padding='same', use_bias = False, activation = tf.keras.activations.relu),
       ]
     )
     
@@ -179,6 +202,13 @@ def vae(model, x):
   logpz = log_normal_pdf(z, 0., 0.)
   logqz_x = log_normal_pdf(z, mean, logvar)
   
+  global TICKS 
+  TICKS = TICKS + 1
+  if (TICKS < 5):
+    
+    print('Test')
+    print(logpz, logqz_x)
+    
   return x_logit, x, logpz, logqz_x
 
 def compute_loss_vae(model, x):
@@ -187,16 +217,16 @@ def compute_loss_vae(model, x):
   
   cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=x_logit, labels=x)
   logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
-
+  
   return [-tf.reduce_mean(logpx_z + logpz - logqz_x)]
 
 def compute_loss_vaegan(model, x):
 
   x_logit, x, logpz, logqz_x = vae(model, x)
-  
+    
   enc_l = model.encode_l(x)
   dis_l = model.discrim_l(x_logit)
-
+  
   cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=dis_l, labels=enc_l)
   logpx_z   = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
 
@@ -247,13 +277,13 @@ def train_step_gan(model, x, optimizers, input_size):
 @tf.function
 def train_step_vaegan(model, x, optimizers, input_size):
   
-    with tf.GradientTape() as enc_tape, tf.GradientTape() as disc_tape, tf.GradientTape() as dec_tape:
+    with tf.GradientTape() as enc_tape, tf.GradientTape() as dec_tape, tf.GradientTape() as disc_tape:
       losses = compute_loss_vaegan(model, x)
     
     gradients = []
     gradients.append(enc_tape.gradient(losses[0], model.encoder.trainable_variables))
-    gradients.append(disc_tape.gradient(losses[1], model.decoder.trainable_variables))
-    gradients.append(dec_tape.gradient(losses[2], model.discriminator.trainable_variables))
+    gradients.append(dec_tape.gradient(losses[1], model.decoder.trainable_variables))
+    gradients.append(disc_tape.gradient(losses[2], model.discriminator.trainable_variables))
 
     optimizers[0].apply_gradients(zip(gradients[0], model.encoder.trainable_variables))
     optimizers[1].apply_gradients(zip(gradients[1], model.decoder.trainable_variables))
@@ -325,8 +355,8 @@ def main(device_num, mode):
   #Constants:
   NUM_TRAINING_EXAMPLES = 60000
   NUM_TESTING_EXAMPLES  = 10000
-  BATCH_SIZE            = 32
-  NUM_EPOCHS            = 10
+  BATCH_SIZE            = 256
+  NUM_EPOCHS            = 50
   NUM_LATENT_DIM        = 100
   VAEGAN_LAYER          = 1
   NUM_PLOT              = 16
@@ -354,7 +384,7 @@ def main(device_num, mode):
   elif (MODE == 1):
     loss_function  = compute_loss_gan
     train_step     = train_step_gan
-    learning_rates = [1e-4, 4e-4]
+    learning_rates = [1e-4, 1e-4]
     plot_function  = generate_and_save_images_gan
 
   elif (MODE == 2):
@@ -376,8 +406,10 @@ def main(device_num, mode):
   
   for epoch in range(1, NUM_EPOCHS + 1):
     start_time = time.time()
+    
     for train_x in train_dataset:
         train_step(model, train_x, optimizers, input_size)
+      
     end_time = time.time()
   
     loss_objects = []
@@ -388,7 +420,7 @@ def main(device_num, mode):
       losses = loss_function(model, test_x)
       for i in range(len(learning_rates)):
         loss_objects[i](losses[i])
-        
+                
     print('Epoch: {} time elapse for current epoch: {}'.format(epoch, end_time - start_time))
     print('Losses:')
     for i in range(len(learning_rates)):
@@ -397,4 +429,7 @@ def main(device_num, mode):
     plot_function(model, epoch, test_sample)
 
 if __name__ == "__main__":
+    
+    global TICKS
+    TICKS = 0
     main(*sys.argv[1:])
