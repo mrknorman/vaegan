@@ -123,7 +123,7 @@ class genome_s():
 			self.learning_rate               = self.genome[genome_index]/TYPE_MAX; genome_index += 1
 			self.batch_size                  = self.genome[genome_index]; genome_index += 1
 
-			self.num_epochs                   = self.genome[genome_index]; genome_index += 1
+			self.num_epochs                  = self.genome[genome_index]; genome_index += 1
 			self.num_semesters               = self.genome[genome_index]; genome_index += 1
 
 			self.layer_genes                 = [[]]*self.num_layers  
@@ -180,7 +180,7 @@ class codec_s():
 		self.loss_type_limits             = (self.codec[codec_index], self.codec[codec_index + 1]); codec_index += 2 
 		self.learning_rate_limits         = (self.codec[codec_index]/TYPE_MAX, self.codec[codec_index + 1]/TYPE_MAX); codec_index += 2
 		self.batch_size_limits            = (self.codec[codec_index], self.codec[codec_index + 1]); codec_index += 2
-		self.num_epochs_limits      	      = (self.codec[codec_index], self.codec[codec_index + 1]); codec_index += 2
+		self.num_epochs_limits      	  = (self.codec[codec_index], self.codec[codec_index + 1]); codec_index += 2
 		self.num_semesters_limits         = (self.codec[codec_index], self.codec[codec_index + 1]); codec_index += 2
 
 		self.layer_type_limits            = (self.codec[codec_index], self.codec[codec_index + 1]); codec_index += 2
@@ -437,6 +437,4 @@ class Model_C(Model):
 
 			x = self.add_layers[layer_index](x, **self.args[layer_index])
 			
-
-				
 		return x

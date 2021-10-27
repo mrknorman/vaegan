@@ -60,20 +60,20 @@ class CVAE(tf.keras.Model):
         ]
     )
     
-    """
+    
     self.discriminator = tf.keras.Sequential(
         [
           tf.keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
                                      input_shape=[28, 28, 1], activation = tf.keras.layers.ReLU(), name = "test_layer"),
-          tf.keras.layers.Dropout(0.3),
+          #tf.keras.layers.Dropout(0.3),
           tf.keras.layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same', activation = tf.keras.layers.ReLU()),
-          tf.keras.layers.Dropout(0.3),
+          #tf.keras.layers.Dropout(0.3),
           tf.keras.layers.Flatten(),
           tf.keras.layers.Dense(1)
         ]
       )
-    """
     
+    """
     self.discriminator = tf.keras.Sequential([
       tf.keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
                                        input_shape=[28, 28, 1]),
@@ -88,6 +88,7 @@ class CVAE(tf.keras.Model):
       tf.keras.layers.Dense(1)]
 
       )
+    """
     
     self.generator = tf.keras.Sequential(
       [
@@ -108,7 +109,7 @@ class CVAE(tf.keras.Model):
         #tf.keras.layers.BatchNormalization(),
         tf.keras.layers.LeakyReLU(),
         tf.keras.layers.Conv2DTranspose(
-          filters=1, kernel_size=5, strides=2, padding='same', use_bias = False, activation = tf.keras.activations.relu),
+          filters=1, kernel_size=5, strides=2, padding='same', use_bias = False, activation = tf.keras.layers.LeakyReLU(alpha=0.01)),
       ]
     )
     
@@ -356,7 +357,7 @@ def main(device_num, mode):
   NUM_TRAINING_EXAMPLES = 60000
   NUM_TESTING_EXAMPLES  = 10000
   BATCH_SIZE            = 256
-  NUM_EPOCHS            = 50
+  NUM_EPOCHS            = 100
   NUM_LATENT_DIM        = 100
   VAEGAN_LAYER          = 1
   NUM_PLOT              = 16
