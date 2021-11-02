@@ -297,7 +297,7 @@ def compute_loss_advae(model, x):
   gen_loss = model.generator_loss(fake_output)
   dis_loss = model.discriminator_loss(real_output, fake_output)
   
-  l_reconstruct = [-tf.reduce_mean(logpx_z + logpz - logqz_x)]
+  l_reconstruct = -tf.reduce_mean(logpx_z + logpz - logqz_x)
   l_regularise  = gen_loss + dis_loss
 
   return [l_reconstruct, l_regularise]
@@ -355,10 +355,10 @@ def train_step_advae(model, x, optimizers, input_size):
     
     gradients = []
     gradients.append(reconstruct_tape.gradient(losses[0], model.encoder.trainable_variables + model.decoder.trainable_variables))
-    gradients.append(regularise_tape.gradient(losses[1], model.discriminator.trainable_variables + model.decoder.trainable_variables))
+    gradients.append(regularise_tape.gradient(losses[1], model.discriminator.trainable_variables + model.encoder.trainable_variables))
 
     optimizers[0].apply_gradients(zip(gradients[0], model.encoder.trainable_variables + model.decoder.trainable_variables))
-    optimizers[1].apply_gradients(zip(gradients[1], model.discriminator.trainable_variables + model.decoder.trainable_variables))
+    optimizers[1].apply_gradients(zip(gradients[1], model.discriminator.trainable_variables + model.encoder.trainable_variables))
       
 def generate_and_save_images_vae(model, epoch, test_sample):
   mean, logvar = model.encode(test_sample)
@@ -423,7 +423,7 @@ def generate_and_save_images_gan(model, epoch, test_sample):
   fig = plt.figure(figsize=(4, 4))
   
   try:
-    os.mkdirs('./tests/vae/')
+    os.mkdirs('./tests/gan/')
   except:
     pass
 
