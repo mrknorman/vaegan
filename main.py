@@ -22,11 +22,77 @@ def setupCUDA(verbose, device_num):
 
   if verbose:
           tf.config.list_physical_devices("GPU")
+      
+#Constants:
+NUM_TRAINING_EXAMPLES = 60000
+NUM_TESTING_EXAMPLES  = 10000
+BATCH_SIZE            = 256
+NUM_EPOCHS            = 100
+NUM_LATENT_DIM        = 100
+VAEGAN_LAYER          = 1
+NUM_PLOT              = 16
+
+input_size = [BATCH_SIZE, NUM_LATENT_DIM]
+      
+discriminators = {"VAE": 
+                    tf.keras.Sequential(
+                    [
+                      tf.keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
+                                                       input_shape=[28, 28, 1]),
+                      tf.keras.layers.LeakyReLU(),
+                      tf.keras.layers.Dropout(0.3),
+
+                      tf.keras.layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same'),
+                      tf.keras.layers.LeakyReLU(),
+                      tf.keras.layers.Dropout(0.3),
+
+                      tf.keras.layers.Flatten(),
+                      tf.keras.layers.Dense(1)
+                    ]),
+                  "GAN": 
+                    tf.keras.Sequential(
+                    [
+                      tf.keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
+                                                       input_shape=[28, 28, 1]),
+                      tf.keras.layers.LeakyReLU(),
+                      tf.keras.layers.Dropout(0.3),
+
+                      tf.keras.layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same'),
+                      tf.keras.layers.LeakyReLU(),
+                      tf.keras.layers.Dropout(0.3),
+
+                      tf.keras.layers.Flatten(),
+                      tf.keras.layers.Dense(1)
+                    ]), 
+                  "VAEGAN":
+                    tf.keras.Sequential(
+                    [
+                      tf.keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
+                                                 input_shape=[28, 28, 1], activation = tf.keras.layers.ReLU(), name = "test_layer"),
+                      tf.keras.layers.Dropout(0.3),
+                      tf.keras.layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same', activation = tf.keras.layers.ReLU()),
+                      tf.keras.layers.Dropout(0.3),
+                      tf.keras.layers.Flatten(),
+                      tf.keras.layers.Dense(1)
+                    ]),
+                    "ADVAE":
+                    tf.keras.Sequential(
+                    [
+                      tf.keras.layers.Conv1D(64, 5, strides= 2, padding='same',
+                                                 input_shape = [NUM_LATENT_DIM, 1,], activation = tf.keras.layers.ReLU(), name = "test_layer"),
+                      tf.keras.layers.Dropout(0.3),
+                      tf.keras.layers.Conv1D(128, 5, strides= 2, padding='same', activation = tf.keras.layers.ReLU()),
+                      tf.keras.layers.Dropout(0.3),
+                      tf.keras.layers.Flatten(),
+                      tf.keras.layers.Dense(1)
+                    ])
+                  }
+
 
 class CVAE(tf.keras.Model):
   """Convolutional variational autoencoder."""
 
-  def __init__(self, NUM_LATENT_DIM, VAEGAN_LAYER):
+  def __init__(self, NUM_LATENT_DIM, VAEGAN_LAYER, NAME):
     super(CVAE, self).__init__()
     
     self.NUM_LATENT_DIM = NUM_LATENT_DIM #Number of latent dimesions in vae and vaegan bottleneck, and number of input noise values in GAN
@@ -60,40 +126,10 @@ class CVAE(tf.keras.Model):
         ]
     )
     
-    
-    self.discriminator = tf.keras.Sequential(
-        [
-          tf.keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
-                                     input_shape=[28, 28, 1], activation = tf.keras.layers.ReLU(), name = "test_layer"),
-          #tf.keras.layers.Dropout(0.3),
-          tf.keras.layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same', activation = tf.keras.layers.ReLU()),
-          #tf.keras.layers.Dropout(0.3),
-          tf.keras.layers.Flatten(),
-          tf.keras.layers.Dense(1)
-        ]
-      )
-    
-    """
-    self.discriminator = tf.keras.Sequential([
-      tf.keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
-                                       input_shape=[28, 28, 1]),
-      tf.keras.layers.LeakyReLU(),
-      tf.keras.layers.Dropout(0.3),
-
-      tf.keras.layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same'),
-      tf.keras.layers.LeakyReLU(),
-      tf.keras.layers.Dropout(0.3),
-
-      tf.keras.layers.Flatten(),
-      tf.keras.layers.Dense(1)]
-
-      )
-    """
+    self.discriminator = discriminators[NAME];
     
     self.generator = tf.keras.Sequential(
-      [
-        
-        
+      [ 
         tf.keras.layers.InputLayer(input_shape=(NUM_LATENT_DIM,)),
         tf.keras.layers.Dense(units=7*7*256, use_bias = False),
         #tf.keras.layers.BatchNormalization(),
@@ -102,11 +138,11 @@ class CVAE(tf.keras.Model):
         tf.keras.layers.Reshape(target_shape=(7, 7, 256)),
         tf.keras.layers.Conv2DTranspose(
           filters=128, kernel_size=5, strides=1, padding='same', use_bias = False),
-        #tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.BatchNormalization(),
         tf.keras.layers.LeakyReLU(),
         tf.keras.layers.Conv2DTranspose(
           filters=64, kernel_size=5, strides=2, padding='same', use_bias = False),
-        #tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.BatchNormalization(),
         tf.keras.layers.LeakyReLU(),
         tf.keras.layers.Conv2DTranspose(
           filters=1, kernel_size=5, strides=2, padding='same', use_bias = False, activation = tf.keras.layers.LeakyReLU(alpha=0.01)),
@@ -202,13 +238,6 @@ def vae(model, x):
   
   logpz = log_normal_pdf(z, 0., 0.)
   logqz_x = log_normal_pdf(z, mean, logvar)
-  
-  global TICKS 
-  TICKS = TICKS + 1
-  if (TICKS < 5):
-    
-    print('Test')
-    print(logpz, logqz_x)
     
   return x_logit, x, logpz, logqz_x
 
@@ -246,6 +275,32 @@ def compute_loss_vaegan(model, x):
   dis_loss = l_gan
   
   return [enc_loss, dec_los, dis_loss]
+
+def compute_loss_advae(model, x):
+
+  mean, logvar = model.encode(x)
+  z = model.reparameterize(mean, logvar)
+  x_logit = model.decode(z)
+  
+  logpz   = log_normal_pdf(z, 0., 0.)
+  logqz_x = log_normal_pdf(z, mean, logvar)
+    
+  cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=x, labels=x_logit)
+  logpx_z   = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
+
+  fake_z = np.random.normal(size = (z.shape[0], NUM_LATENT_DIM, 1))
+  z = tf.reshape(z, (z.shape[0], NUM_LATENT_DIM, 1))
+
+  real_output = model.discriminate(z)
+  fake_output = model.discriminate(fake_z)
+  
+  gen_loss = model.generator_loss(fake_output)
+  dis_loss = model.discriminator_loss(real_output, fake_output)
+  
+  l_reconstruct = [-tf.reduce_mean(logpx_z + logpz - logqz_x)]
+  l_regularise  = gen_loss + dis_loss
+
+  return [l_reconstruct, l_regularise]
 
 @tf.function
 def train_step_vae(model, x, optimizers, input_size):
@@ -286,12 +341,25 @@ def train_step_vaegan(model, x, optimizers, input_size):
     gradients.append(dec_tape.gradient(losses[1], model.decoder.trainable_variables))
     gradients.append(disc_tape.gradient(losses[2], model.discriminator.trainable_variables))
 
-    optimizers[0].apply_gradients(zip(gradients[0], model.encoder.trainable_variables))
-    optimizers[1].apply_gradients(zip(gradients[1], model.decoder.trainable_variables))
+    optimizers[0].apply_gradients(zip(gradients[0], model.enc_l.trainable_variables))
+    optimizers[1].apply_gradients(zip(gradients[1], model.dec_l.trainable_variables))
     optimizers[2].apply_gradients(zip(gradients[2], model.discriminator.trainable_variables))
     
     return 0
   
+@tf.function
+def train_step_advae(model, x, optimizers, input_size):
+  
+    with tf.GradientTape() as reconstruct_tape, tf.GradientTape() as regularise_tape:
+      losses = compute_loss_advae(model, x)
+    
+    gradients = []
+    gradients.append(reconstruct_tape.gradient(losses[0], model.encoder.trainable_variables + model.decoder.trainable_variables))
+    gradients.append(regularise_tape.gradient(losses[1], model.discriminator.trainable_variables + model.decoder.trainable_variables))
+
+    optimizers[0].apply_gradients(zip(gradients[0], model.encoder.trainable_variables + model.decoder.trainable_variables))
+    optimizers[1].apply_gradients(zip(gradients[1], model.discriminator.trainable_variables + model.decoder.trainable_variables))
+      
 def generate_and_save_images_vae(model, epoch, test_sample):
   mean, logvar = model.encode(test_sample)
   z = model.reparameterize(mean, logvar)
@@ -309,6 +377,24 @@ def generate_and_save_images_vae(model, epoch, test_sample):
     pass
 
   plt.savefig('./tests/vae/image_at_epoch_{:04d}.png'.format(epoch))
+  
+def generate_and_save_images_advae(model, epoch, test_sample):
+  mean, logvar = model.encode(test_sample)
+  z = model.reparameterize(mean, logvar)
+  predictions = model.sample(z)
+  fig = plt.figure(figsize=(4, 4))
+  
+  for i in range(predictions.shape[0]):
+    plt.subplot(4, 4, i + 1)
+    plt.imshow(predictions[i, :, :, 0], cmap='gray')
+    plt.axis('off')
+    
+  try:
+    os.mkdirs('./tests/advae/')
+  except:
+    pass
+
+  plt.savefig('./tests/advae/image_at_epoch_{:04d}.png'.format(epoch))
   
 def generate_and_save_images_vaegan(model, epoch, test_sample):
   mean, logvar = model.encode(test_sample)
@@ -352,17 +438,6 @@ def main(device_num, mode):
   
   MODE = int(mode)
   setupCUDA(0, device_num)
-  
-  #Constants:
-  NUM_TRAINING_EXAMPLES = 60000
-  NUM_TESTING_EXAMPLES  = 10000
-  BATCH_SIZE            = 256
-  NUM_EPOCHS            = 100
-  NUM_LATENT_DIM        = 100
-  VAEGAN_LAYER          = 1
-  NUM_PLOT              = 16
-  
-  input_size = [BATCH_SIZE, NUM_LATENT_DIM]
 
   (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
 
@@ -374,25 +449,38 @@ def main(device_num, mode):
   test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
           .shuffle(NUM_TESTING_EXAMPLES).batch(BATCH_SIZE))
   
-  model = CVAE(NUM_LATENT_DIM, VAEGAN_LAYER)
-
   if (MODE == 0):
+    name           = "VAE"
     loss_function  = compute_loss_vae
     train_step     = train_step_vae
     learning_rates = [1e-4]
     plot_function  = generate_and_save_images_vae
     
   elif (MODE == 1):
+    name           = "GAN"
     loss_function  = compute_loss_gan
     train_step     = train_step_gan
     learning_rates = [1e-4, 1e-4]
     plot_function  = generate_and_save_images_gan
 
   elif (MODE == 2):
+    name           = "VAEGAN"
     loss_function  = compute_loss_vaegan
     train_step     = train_step_vaegan
     learning_rates = [1e-4, 1e-4, 1e-4]
     plot_function  = generate_and_save_images_vaegan
+    
+  elif (MODE == 3):
+    name           = "ADVAE"
+    loss_function  = compute_loss_advae
+    train_step     = train_step_advae
+    learning_rates = [1e-4, 1e-4]
+    plot_function  = generate_and_save_images_advae
+    
+  print(name)
+    
+  model = CVAE(NUM_LATENT_DIM, VAEGAN_LAYER, name)
+  model.discriminator.summary()
   
   optimizers = []
   for rate in learning_rates:
