@@ -78,12 +78,8 @@ discriminators = {"VAE":
                     "ADVAE":
                     tf.keras.Sequential(
                     [
-                      tf.keras.layers.Conv1D(64, 5, strides= 2, padding='same',
-                                                 input_shape = [NUM_LATENT_DIM, 1,], activation = tf.keras.layers.ReLU(), name = "test_layer"),
-                      tf.keras.layers.Dropout(0.3),
-                      tf.keras.layers.Conv1D(128, 5, strides= 2, padding='same', activation = tf.keras.layers.ReLU()),
-                      tf.keras.layers.Dropout(0.3),
-                      tf.keras.layers.Flatten(),
+                      tf.keras.layers.Dense(128),
+                      tf.keras.layers.Dense(64),
                       tf.keras.layers.Dense(1)
                     ])
                   }
@@ -236,7 +232,7 @@ def vae(model, x):
   z = model.reparameterize(mean, logvar)
   x_logit = model.decode(z)
   
-  logpz = log_normal_pdf(z, 0., 0.)
+  logpz   = log_normal_pdf(z, 0., 0.)
   logqz_x = log_normal_pdf(z, mean, logvar)
     
   return x_logit, x, logpz, logqz_x
@@ -257,7 +253,7 @@ def compute_loss_vaegan(model, x):
   enc_l = model.encode_l(x)
   dis_l = model.discrim_l(x_logit)
   
-  cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=dis_l, labels=enc_l)
+  cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=dis_l, labels=enc_l) #Compare discriminator layers not dis and enc
   logpx_z   = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
 
   real_output = model.discriminate(x)
@@ -271,7 +267,7 @@ def compute_loss_vaegan(model, x):
   l_gan   = gen_loss + dis_loss
   
   enc_loss = l_prior + l_dis
-  dec_los  = l_dis   + l_gan
+  dec_los  = l_dis   - l_gan
   dis_loss = l_gan
   
   return [enc_loss, dec_los, dis_loss]
@@ -288,8 +284,8 @@ def compute_loss_advae(model, x):
   cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=x, labels=x_logit)
   logpx_z   = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
 
-  fake_z = np.random.normal(size = (z.shape[0], NUM_LATENT_DIM, 1))
-  z = tf.reshape(z, (z.shape[0], NUM_LATENT_DIM, 1))
+  z      = np.random.normal(size = (z.shape[0], NUM_LATENT_DIM, 1))
+  fake_z = tf.reshape(z, (z.shape[0], NUM_LATENT_DIM, 1))
 
   real_output = model.discriminate(z)
   fake_output = model.discriminate(fake_z)
@@ -335,14 +331,16 @@ def train_step_vaegan(model, x, optimizers, input_size):
   
     with tf.GradientTape() as enc_tape, tf.GradientTape() as dec_tape, tf.GradientTape() as disc_tape:
       losses = compute_loss_vaegan(model, x)
+      
+      #tf.clip_by_value(losses[0], 0, 100000);
     
     gradients = []
     gradients.append(enc_tape.gradient(losses[0], model.encoder.trainable_variables))
     gradients.append(dec_tape.gradient(losses[1], model.decoder.trainable_variables))
     gradients.append(disc_tape.gradient(losses[2], model.discriminator.trainable_variables))
 
-    optimizers[0].apply_gradients(zip(gradients[0], model.enc_l.trainable_variables))
-    optimizers[1].apply_gradients(zip(gradients[1], model.dec_l.trainable_variables))
+    optimizers[0].apply_gradients(zip(gradients[0], model.encoder.trainable_variables))
+    optimizers[1].apply_gradients(zip(gradients[1], model.decoder.trainable_variables))
     optimizers[2].apply_gradients(zip(gradients[2], model.discriminator.trainable_variables))
     
     return 0
@@ -437,7 +435,7 @@ def generate_and_save_images_gan(model, epoch, test_sample):
 def main(device_num, mode):
   
   MODE = int(mode)
-  setupCUDA(0, device_num)
+  setupCUDA(1, device_num)
 
   (train_images, _), (test_images, _) = tf.keras.datasets.mnist.load_data()
 
